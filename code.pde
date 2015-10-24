@@ -9,6 +9,12 @@ int place = 1;
 float bSize = 40;
 Boolean canPlace = true;
 int editing = 0;
+int edir = 0;
+int nextWave = 10;
+String[] bname = {"Engine", "Cable","Delayer", "Charger", "Reflector", "Laser"};
+Boolean empty;
+Boolean mout;
+
 
 void setup() {
     width = window.innerWidth;
@@ -19,8 +25,8 @@ void setup() {
     blocks = new ArrayList();
     stars = new ArrayList();
     parts = new ArrayList();
-    textFont(myfont);
-    blocks.add(new Block(width/2,height/2,0));
+    //textFont(myfont);
+    noCursor();
 }
 
 Number.prototype.between = function (min, max) {
@@ -34,15 +40,23 @@ void draw() {
     background(0);
     
     canPlace = true;
+    empty = true;
     
-    if (stars.size() + 20 < blocks.size()) {
-      stars.add(new Star());
+    if (bSize/2 + round(mouseX/bSize)*bSize + bSize > width || bSize/2 + round(mouseY/bSize)*bSize + bSize > height) {
+        mout = true;
+    } else {mout = false;}
+    
+    if (blocks.size() == nextWave) {
+      for (int i=0; i<nextWave*2; i++) {
+        stars.add(new Star());
+      }
+      nextWave += 10;
     }
     
     for (int i=blocks.size()-1; i>=0; i--) {
         Particle b = (Block) blocks.get(i);
         b.update();
-        if (round(mouseX/bSize)*bSize == b.x && round(mouseY/bSize)*bSize == b.y) {
+        if (bSize/2 + round(mouseX/bSize)*bSize == b.x && bSize/2 + round(mouseY/bSize)*bSize == b.y) {
           canPlace = false;
           editing = i;
           b.showdir();
@@ -50,19 +64,30 @@ void draw() {
         if (b.type == 2 && b.power > 200) {
           blocks.remove(i);
         }
+        
+        if (b.power > 5) {
+          empty = false;
+        }
+    }
+    
+    if (empty) {
+      nextWave = 10;
     }
     
     for (int i=stars.size()-1; i>=0; i--) {
         Particle s = (Star) stars.get(i);
         s.update();
-        if (s.power > 750) {
+        if (s.power > 750 || s.hp <= 0 || (s.empty < 0 && s.y > height + 100)) {
           stars.remove(i);
+          for (int v=0; v<3; v++) {
+            parts.add(new Part(s.x,s.y,0));
+          }
           for (int j=blocks.size()-1; j>=0; j--) {
             Particle b = (Block) blocks.get(j);
-            if (dist(s.x,s.y,b.x + bSize/2,b.y + bSize/2) < bSize) {
+            if (dist(s.x,s.y,b.x + bSize/2,b.y + bSize/2) < bSize && b.shield < 750) {
               blocks.remove(j);
-              for (int v=0; v<10; v++) {
-                parts.add(new Part(b.x + bSize/2,b.y + bSize/2));
+              for (int v=0; v<8; v++) {
+                parts.add(new Part(b.x + bSize/2,b.y + bSize/2,bSize/2));
               }
             }
           }
@@ -75,23 +100,37 @@ void draw() {
         if (p.h <= 0) {parts.remove(i);}
     }
     
-    fill(255);
-    textAlign(CENTER,TOP);
-    textSize(30);
-    text(place,width/2,10);
+    fill(50);
+    stroke(50);
+    rect(0,0,bSize/2,height);
     
-    fill(0,0);
-    if (canPlace) {stroke(255);} else {stroke(255,0,0);}
-    rect(round(mouseX/bSize)*bSize,round(mouseY/bSize)*bSize,bSize,bSize);
+    rect(width,0,-bSize/2,height);
+    
+    fill(255);
+    textAlign(CENTER,BOTTOM);
+    textSize(30);
+    text((nextWave - blocks.size()) + " Blocks before next wave",width/2,height - 10);
+    
+    if (!mout) {
+      strokeWeight(1);
+      fill(0,0);
+      if (canPlace) {stroke(255);} else {stroke(255,0,0);}
+      rect(bSize/2 + round(mouseX/bSize)*bSize,bSize/2 + round(mouseY/bSize)*bSize,bSize,bSize);
+      fill(255);
+      textAlign(LEFT,BOTTOM);
+      textSize(20);
+      text("Place " + bname[place],bSize/2 + round(mouseX/bSize)*bSize,bSize/2 + round(mouseY/bSize)*bSize);
+    }
+    
     pwidth = width;
     pheight = height;
 }
 
 void mouseClicked() {
-    if (canPlace && mouseButton == LEFT) {
+    if (canPlace && mouseButton == LEFT && !mout && stars.size() <= 1) {
       blocks.add(new Block(mouseX,mouseY,place));
     }
-    if (!canPlace && mouseButton == RIGHT) {
+    if (!canPlace && mouseButton == RIGHT && !mout) {
       blocks.remove(editing);
     }
 }
@@ -133,11 +172,7 @@ void keyPressed() {
   }
     
   if (key == 'e') {
-    if (place < 4) {place += 1;} else {place = 0;}
-  }
-  
-  if (key == 'r') {
-    stars.add(new Star());
+    if (place < 5) {place += 1;} else {place = 0;}
   }
 }
 
@@ -158,10 +193,11 @@ class Block {
     int type;
     color c;
     int shield;
+    Boolean attacked;
 
     Block(ox,oy,ot) {
-      x = round(ox/bSize)*bSize;
-      y = round(oy/bSize)*bSize;
+      x = bSize/2 + round(ox/bSize)*bSize;
+      y = bSize/2 + round(oy/bSize)*bSize;
       type = ot;
       for (int i=0; i<4; i++) {
         pdir[i] = 1;
@@ -171,20 +207,27 @@ class Block {
     }
     
     void showdir() {
-      strokeWeight(2);
-      stroke(0);
-      fill(0,255,0);
-      if (pdir[0] == 0) {ellipse(x + bSize/2,y,10,10);}
-      if (pdir[1] == 0) {ellipse(x + bSize,y + bSize/2,10,10);}
-      if (pdir[2] == 0) {ellipse(x + bSize/2,y + bSize,10,10);}
-      if (pdir[3] == 0) {ellipse(x,y + bSize/2,10,10);}
-        
-      fill(255,0,0);
-      if (pdir[0] == 1) {ellipse(x + bSize/2,y,10,10);}
-      if (pdir[1] == 1) {ellipse(x + bSize,y + bSize/2,10,10);}
-      if (pdir[2] == 1) {ellipse(x + bSize/2,y + bSize,10,10);}
-      if (pdir[3] == 1) {ellipse(x,y + bSize/2,10,10);}
-      strokeWeight(1);
+      switch(type) {
+        case 0:
+        case 1:
+        case 2:
+        case 3:
+              
+        strokeWeight(2);
+        stroke(0);
+        fill(0,255,0);
+        if (pdir[0] == 0) {ellipse(x + bSize/2,y,10,10);}
+        if (pdir[1] == 0) {ellipse(x + bSize,y + bSize/2,10,10);}
+        if (pdir[2] == 0) {ellipse(x + bSize/2,y + bSize,10,10);}
+        if (pdir[3] == 0) {ellipse(x,y + bSize/2,10,10);}
+          
+        fill(255,0,0);
+        if (pdir[0] == 1) {ellipse(x + bSize/2,y,10,10);}
+        if (pdir[1] == 1) {ellipse(x + bSize,y + bSize/2,10,10);}
+        if (pdir[2] == 1) {ellipse(x + bSize/2,y + bSize,10,10);}
+        if (pdir[3] == 1) {ellipse(x,y + bSize/2,10,10);}
+        strokeWeight(1);
+      }
     }
 
     void update() {
@@ -198,7 +241,8 @@ class Block {
       stroke(c);
       fill(c);
         
-      shield /= 2;
+      if (shield >= 10) {shield -= 10;}
+      attacked = false;
         
       switch(type) {
         case 0:
@@ -227,7 +271,7 @@ class Block {
           rect(-bSize/4,-bSize/4,bSize/2,bSize/2,7);
           rotate(radians(-power));
           translate(-x - bSize/2,-y - bSize/2);
-          power += 3;
+          power += 1;
           break;
               
         case 1:
@@ -280,7 +324,11 @@ class Block {
             }
           }
           strokeWeight(5);
-          ellipse(x + bSize/2,y + bSize/2,((power + 30)/130)*bSize/2,((power + 30)/130)*bSize/2);
+          translate(x + bSize/2,y + bSize/2);
+          rotate(radians(power + 45));
+          rect(-bSize/10,-bSize/10,bSize/5,bSize/5,2);
+          rotate(radians(-power - 45));
+          translate(-x - bSize/2,-y - bSize/2);
           if (pdir[0] == 0 || pdir[0] > 1) {line(x + bSize/2,y + bSize/2,x + bSize/2,y);}
           if (pdir[1] == 0 || pdir[1] > 1) {line(x + bSize/2,y + bSize/2,x + bSize,y + bSize/2);}
           if (pdir[2] == 0 || pdir[2] > 1) {line(x + bSize/2,y + bSize/2,x + bSize/2,y + bSize);}
@@ -293,21 +341,22 @@ class Block {
             Particle b = (Block) blocks.get(i);
             if (b.x == x && b.y == y + bSize && pdir[2] == 0) {
               b.pdir[0] = 3;
-              if (power > 3 && b.power < 1499) {b.power += 2; power -= 3;}
+              if (power >= 0.3 && b.power < 1500) {b.power += 1; power -= 0.3; attacked = true;}
             } 
             if (b.x == x - bSize && b.y == y && pdir[3] == 0) {
               b.pdir[1] = 3;
-              if (power > 3 && b.power < 1499) {b.power += 2; power -= 3;}
+              if (power >= 0.3 && b.power < 1500) {b.power += 1; power -= 0.3; attacked = true;}
             }
             if (b.x == x && b.y == y - bSize && pdir[0] == 0) {
               b.pdir[2] = 3;
-              if (power > 3 && b.power < 1499) {b.power += 2; power -= 3;}
+              if (power >= 0.3 && b.power < 1500) {b.power += 1; power -= 0.3; attacked = true;}
             }
             if (b.x == x + bSize && b.y == y && pdir[1] == 0) {
               b.pdir[3] = 3;
-              if (power > 3 && b.power < 1499) {b.power += 2; power -= 3;}
+              if (power >= 0.3 && b.power < 1500) {b.power += 1; power -= 0.3; attacked = true;}
             }
           }
+          if (!attacked) {power += 10;}
           strokeWeight(3);
           fill(0);
           translate(x + bSize/2,y + bSize/2);
@@ -315,29 +364,49 @@ class Block {
           rect(-bSize/4,-bSize/4,bSize/2,bSize/2,2);
           rotate(radians(-power - 45));
           translate(-x - bSize/2,-y - bSize/2);
-              
-          power *= 1.001;
 
           break;
        
         case 4:
-          for (int i=blocks.size()-1; i>=0; i--) {
-            Particle b = (Block) blocks.get(i);
-            if (dist(b.x,b.y,x,y) < power/8) {
-              b.shield = power;
+          for (int i=stars.size()-1; i>=0; i--) {
+            Particle s = (Star) stars.get(i);
+            if (dist(s.x,s.y,x,y) < 190 && power >= 10 && !attacked) {
+              strokeWeight(1);
+              line(x+bSize/2,y+bSize/2,s.x,s.y);
+              if (dist(x+bSize/2,0,s.x + s.vx,0) < dist(x+bSize/2,0,s.x - s.vx,0)) {s.vx *= -1;}
+              if (dist(y+bSize/2,0,s.y + s.vy,0) < dist(y+bSize/2,0,s.y - s.vy,0)) {s.vy *= -1;}
+              power -= 10;
+              attacked = true;
+            }
+          }
+          strokeWeight(3);
+          fill(0);
+          translate(x + bSize/2,y + bSize/2);
+          ellipse(0,0,bSize/1.5,bSize/1.5);
+          strokeWeight(2);
+          translate(-x - bSize/2,-y - bSize/2);
+
+          break;
+              
+        case 5:
+          for (int i=stars.size()-1; i>=0; i--) {
+            Particle s = (Star) stars.get(i);
+            if (dist(s.x,s.y,x,y) < 190 && power >= 100 && !attacked) {
+              strokeWeight(10*power/1500);
+              line(x+bSize/2,y+bSize/2,s.x,s.y);
+              s.hp -= 20*power/1500;
+              power -= 10;
+              attacked = true;
             }
           }
           strokeWeight(1);
           translate(x + bSize/2,y + bSize/2);
-          ellipse(0,0,bSize/1.5,bSize/1.5);
+          rotate(radians(45));
+          rect(-bSize/4,-bSize/4,bSize/2,bSize/2,2);
           fill(0);
-          rect(-bSize/5,-bSize/5,bSize/2.5,bSize/2.5,2);
-          strokeWeight(2);
-          fill(red(c),green(c),blue(c),10);
-          ellipse(0,0,power/4,power/4);
+          ellipse(0,0,5,5);
+          rotate(radians(-45));
           translate(-x - bSize/2,-y - bSize/2);
-        
-          if (power >= 2) {power -= 2;}
 
           break;
       }
@@ -351,6 +420,7 @@ class Star {
     float vy;
     float[] tx;
     float[] ty;
+    float hp;
     int tl;
     float power;
     int t;
@@ -358,7 +428,7 @@ class Star {
     
     Star() {
       x = random(width);
-      y = random(-height);
+      y = random(-height*2);
       vx = 0;
       vy = 0;
       t = round(random(blocks.size()-1));
@@ -366,6 +436,7 @@ class Star {
       tl = 10;
       tx = new float[tl];
       ty = new float[tl];
+      hp = 255;
     }
     
     void update() {
@@ -375,7 +446,8 @@ class Star {
       stroke(c);
       fill(c);
         
-      if (blocks.size() > 0) {
+        
+      if (blocks.size() > 0 && !empty) {
         if (t > blocks.size()-1) {
           t = round(random(blocks.size()-1));
         }
@@ -392,9 +464,14 @@ class Star {
         x += vx;
         y += vy;
         
-        if (dist(b.x + bSize/2,b.y + bSize/2,x,y) < bSize/2 && b.power > 1) {
-          b.power -= 2;
-          power += 2;
+        if (dist(b.x + bSize/2,b.y + bSize/2,x,y) < bSize/2) {
+          if (b.shield >= 10) {
+            b.shield -= 10;
+            if (power > 0) {power -= 1;}
+          } else if (b.power > 1) {
+            b.power -= 2;
+            power += 2;
+          }
         } else if (power > 0) {power -= 1;}
       } else {
         if (random(width) > x) {vx += random(0.8); vx *= .96;};
@@ -430,9 +507,9 @@ class Part {
     float h;
     float s;
     
-    Part(ox,oy) {
-      x = ox + random(-bSize/2,bSize/2);
-      y = oy + random(-bSize/2,bSize/2);
+    Part(ox,oy,or) {
+      x = ox + random(-or,or);
+      y = oy + random(-or,or);
       vx = 0;
       vy = 0;
       vx = random(-2,2);
@@ -444,10 +521,10 @@ class Part {
     
     void update() {
       if (h > 0) {h -= 1;}
-      if (h < 60) {c = lerpColor(color(100,0),color(255,150,100),h/250);} else if (h < 120) {
-        c = lerpColor(color(255,150,100),color(167,225,255),(h-60)/60);
-      } else if (h < 180) {c = lerpColor(color(167,225,255),color(255),(h-120)/60);} else {c = color(255);}
-      stroke(c);
+      if (h < 60) {c = lerpColor(color(100,0),color(255,150,100,85),h/250);} else if (h < 120) {
+        c = lerpColor(color(255,150,100,85),color(167,225,255,170),(h-60)/60);
+      } else if (h < 180) {c = lerpColor(color(167,225,255,170),color(255),(h-120)/60);} else {c = color(255);}
+      stroke(0.0);
       fill(c);
       vx *= .96;
       vy *= .96;
